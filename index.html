@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>影片自動字幕</title>
+<style>
+  :root {
+    --ground: #f2f4f3;
+    --surface: #ffffff;
+    --ink: #17201d;
+    --muted: #5a6762;
+    --line: #d7dedb;
+    --accent: #0f6e66;
+    --accent-ink: #ffffff;
+    --now: #dff0eb;
+    --mark: #fbe38a;
+    --mark-ink: #17201d;
+    --screen: #0a0e0d;
+    --good: #1f7a45;
+    --warn: #9a6200;
+    --danger: #a3342a;
+    --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1211; --surface: #161b1a; --ink: #e3e9e6; --muted: #93a09a; --line: #28302d;
+      --accent: #56bfae; --accent-ink: #0a1210; --now: #1a2f2a; --mark: #7a5c14; --mark-ink: #fff5d6;
+      --good: #6fcf97; --warn: #e3b05a; --danger: #f08a7e; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1211; --surface: #161b1a; --ink: #e3e9e6; --muted: #93a09a; --line: #28302d;
+    --accent: #56bfae; --accent-ink: #0a1210; --now: #1a2f2a; --mark: #7a5c14; --mark-ink: #fff5d6;
+    --good: #6fcf97; --warn: #e3b05a; --danger: #f08a7e; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  /* 下面很多元件自己設了 display，不加這條 hidden 屬性會失效 */
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.6 var(--sans); padding-inline: 16px; }
+  button, input, select { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h2 { margin: 0; font-size: 17px; line-height: 1.4; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding-block: 16px 14px; }
+  .brand { display: flex; align-items: baseline; gap: 14px; min-width: 0; flex-wrap: wrap; }
+  .brand a { color: inherit; text-decoration: none; font-weight: 700; font-size: 20px; letter-spacing: .02em; }
+  .crumb { color: var(--muted); font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .chip[data-state="online"] .dot { background: var(--good); }
+  .chip[data-state="offline"] .dot { background: var(--warn); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; text-decoration: none;
+    font-size: 14px; line-height: 1.3; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary, .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.quiet { border-color: transparent; background: none; color: var(--muted); padding-inline: 8px; }
+  .btn.quiet:hover { color: var(--danger); border-color: transparent; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  input[type="text"], input[type="search"], input[type="password"] {
+    min-width: 0; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--ground);
+  }
+  input[type="file"] { max-width: 100%; font-size: 13px; }
+  .hint { margin: 0; font-size: 13px; color: var(--muted); }
+  .problem { margin: 0; font-size: 14px; color: var(--danger); }
+
+  /* ---- 首頁 ---- */
+  .home { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 20px; align-items: start; padding-bottom: 32px; }
+  .add { display: grid; gap: 16px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .field { display: grid; gap: 6px; }
+  .field label, .field .label { font-size: 13px; color: var(--muted); }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  .drop {
+    display: grid; justify-items: center; gap: 4px; padding: 26px 16px; text-align: center; cursor: pointer;
+    border: 1.5px dashed var(--line); border-radius: 10px; background: var(--ground);
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop strong { font-size: 16px; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  details[open] summary { margin-bottom: 10px; }
+  .srtForm { display: grid; gap: 10px; }
+  .mine { display: grid; gap: 18px; }
+  .group { display: grid; gap: 8px; }
+  .group h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--muted); }
+  .items { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; background: var(--surface); }
+  .item .name { flex: 1; min-width: 0; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+  .item a.name:hover { color: var(--accent); }
+  .item .meta { font: 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .empty { margin: 0; padding: 18px 20px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 14px; }
+
+  /* ---- 進度 ---- */
+  .job { max-width: 620px; margin: 24px auto 48px; display: grid; gap: 14px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .stage { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+  .stage span:last-child { font: 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .bar { height: 8px; border-radius: 99px; background: var(--ground); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .4s; }
+  .bar.busy span { width: 30%; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+
+  /* ---- 播放 ---- */
+  .watch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: 20px; align-items: start; padding-bottom: 24px; }
+  .screen { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: var(--screen); border-radius: 10px; overflow: hidden; }
+  .screen video, .screen iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--screen); }
+  video::cue { background: rgba(0, 0, 0, .78); color: #fff; line-height: 1.35; }
+  .overlay {
+    position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 20px;
+    background: var(--screen); color: #e8ecea; text-align: center; overflow-y: auto;
+  }
+  .overlay p { margin: 0; max-width: 48ch; }
+  .overlay .hint { color: #a9b5b0; }
+  .overlay a { color: #7fd6c7; }
+  .overlay .btn { border-color: #34403c; background: #1a2220; color: #e8ecea; }
+  .overlay .btn.primary { background: #56bfae; border-color: #56bfae; color: #0a1210; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .size { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .size button { border: 0; background: none; padding: 7px 11px; cursor: pointer; font-size: 14px; }
+  .size button:disabled { opacity: .45; cursor: default; }
+  .size output { min-width: 4.5ch; text-align: center; font: 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .spacer { flex: 1; }
+  .note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+  .transcript {
+    display: flex; flex-direction: column; min-height: 0; height: calc(100dvh - 100px); max-height: 900px;
+    position: sticky; top: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  }
+  .search { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .search input { flex: 1; }
+  .search output { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .panel { position: relative; flex: 1; min-height: 0; display: flex; }
+  .lines { position: relative; flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 6px 0; list-style: none; }
+  .lines button {
+    display: grid; grid-template-columns: 5.2ch 1fr; gap: 10px; width: 100%; padding: 5px 14px;
+    border: 0; background: none; text-align: left; cursor: pointer; line-height: 1.55;
+  }
+  .lines button:hover { background: var(--ground); }
+  .lines time { font: 12px/1.9 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .lines .now button { background: var(--now); }
+  .lines .now time { color: var(--accent); font-weight: 600; }
+  mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; }
+  .follow {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; border: 0;
+    cursor: pointer; background: var(--accent); color: var(--accent-ink); font-size: 13px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    max-width: calc(100% - 32px); padding: 9px 16px; border-radius: 8px; background: var(--ink); color: var(--ground);
+    font-size: 14px; z-index: 10;
+  }
+
+  @media (max-width: 900px) {
+    .home, .watch { grid-template-columns: minmax(0, 1fr); }
+    .transcript { position: static; height: 60dvh; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+    .bar span { transition: none; }
+    .bar.busy span { animation: none; width: 100%; opacity: .5; }
+  }
+</style>
+<style id="cueSize"></style>
+</head>
+<body>
+<header class="top wrap">
+  <div class="brand">
+    <a href="#">影片自動字幕</a>
+    <span id="crumb" class="crumb"></span>
+  </div>
+  <span id="server" class="chip" data-state="checking"><span class="dot"></span><span id="serverText">檢查字幕服務…</span></span>
+</header>
+
+<!-- 首頁 -->
+<main id="homeView" class="home wrap" hidden>
+  <section class="add" aria-labelledby="addTitle">
+    <h2 id="addTitle">幫影片上字幕</h2>
+    <label id="drop" class="drop" for="fileInput">
+      <strong>選擇影片檔</strong>
+      <span class="hint">或拖曳到這裡。只會把聲音送去辨識（2.5 小時約 140 MB），影片留在你的電腦。</span>
+    </label>
+    <input id="fileInput" type="file" accept="video/*,audio/*" hidden>
+    <div class="or">或</div>
+    <form id="driveForm" class="field">
+      <label for="driveUrl">Google Drive 分享連結（要開放「知道連結的人都能查看」）</label>
+      <div class="row">
+        <input id="driveUrl" type="text" inputmode="url" placeholder="https://drive.google.com/file/d/…" autocomplete="off">
+        <button class="btn primary" type="submit">產生字幕</button>
+      </div>
+    </form>
+    <div class="field">
+      <label for="classCode">通行碼</label>
+      <input id="classCode" type="password" autocomplete="off">
+    </div>
+    <p id="addStatus" class="hint" hidden></p>
+    <p id="addError" class="problem" role="alert" hidden></p>
+    <details>
+      <summary>已經有 .srt 字幕檔？直接用播放器看</summary>
+      <form id="srtForm" class="srtForm">
+        <div class="field"><label for="srtVideo">影片檔</label><input id="srtVideo" type="file" accept="video/*,audio/*"></div>
+        <div class="field"><label for="srtFile">字幕檔（.srt）</label><input id="srtFile" type="file" accept=".srt,text/plain"></div>
+        <div><button class="btn" type="submit">播放</button></div>
+      </form>
+    </details>
+  </section>
+
+  <section class="mine" aria-label="我的字幕">
+    <div id="jobGroup" class="group" hidden>
+      <h3>處理中</h3>
+      <div id="jobList" class="items"></div>
+    </div>
+    <div class="group">
+      <h3>我的字幕</h3>
+      <div id="itemList" class="items"></div>
+      <p id="noItems" class="empty">還沒有字幕。做好的字幕只存在這個瀏覽器裡，換電腦或清除瀏覽資料就會不見，記得下載 .srt 備份。</p>
+    </div>
+  </section>
+</main>
+
+<!-- 進度 -->
+<main id="jobView" class="wrap" hidden>
+  <section class="job" aria-live="polite">
+    <h2 id="jobTitle">正在產生字幕</h2>
+    <div class="stage"><span id="jobStage">準備中</span><span id="jobPercent"></span></div>
+    <div id="jobBar" class="bar busy"><span></span></div>
+    <p id="jobDetail" class="hint"></p>
+    <p id="jobError" class="problem" hidden></p>
+    <p class="hint">2.5 小時的影片大約要 10 分鐘。上傳完成後可以先離開，之後從首頁的「處理中」回來看。</p>
+  </section>
+</main>
+
+<!-- 播放 -->
+<main id="watchView" class="watch wrap" hidden>
+  <section>
+    <div class="screen">
+      <video id="video" controls preload="metadata" playsinline hidden></video>
+      <iframe id="drivePlayer" title="Google Drive 播放器" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
+      <div id="chooser" class="overlay">
+        <p><strong>選擇這部影片的檔案</strong></p>
+        <button id="pickLocal" class="btn primary" type="button">選擇電腦裡的影片</button>
+        <p class="hint">影片只在你的瀏覽器裡播放，字幕會自動疊上去。
+          <span id="driveHint">還沒下載的話，先 <a id="driveDownload" target="_blank" rel="noopener">從 Google Drive 下載</a>。</span></p>
+        <button id="useDrive" class="btn" type="button">直接用 Google Drive 播放器看（沒有疊加字幕）</button>
+      </div>
+      <div id="videoError" class="overlay" hidden>
+        <p><strong>這個檔案無法在瀏覽器播放</strong></p>
+        <p class="hint">可以下載 .srt，改用 VLC 之類的播放器打開影片（字幕檔和影片放在同一個資料夾、取同一個檔名就會自動載入）。</p>
+        <button id="retryPick" class="btn" type="button">換一個檔案</button>
+      </div>
+    </div>
+    <input id="watchFile" type="file" accept="video/*,audio/*" hidden>
+    <div class="toolbar">
+      <button id="cc" class="btn" type="button" aria-pressed="true">字幕：開</button>
+      <div class="size" role="group" aria-label="字幕大小">
+        <button id="smaller" type="button" aria-label="字幕縮小">A−</button>
+        <output id="sizeLabel">100%</output>
+        <button id="bigger" type="button" aria-label="字幕放大">A+</button>
+      </div>
+      <span class="spacer"></span>
+      <button id="changeSource" class="btn" type="button">換影片檔</button>
+      <button id="srt" class="btn" type="button">下載 .srt</button>
+    </div>
+    <p id="sourceNote" class="note"></p>
+  </section>
+  <aside class="transcript" aria-label="逐字稿">
+    <div class="search">
+      <input id="q" type="search" placeholder="搜尋逐字稿" autocomplete="off">
+      <output id="count"></output>
+    </div>
+    <div class="panel">
+      <ol id="lines" class="lines"></ol>
+      <button id="follow" class="follow" type="button" hidden>回到目前播放位置</button>
+    </div>
+  </aside>
+</main>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="vendor/mp4box.all.min.js"></script>
+<script src="extract-audio.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); return true; } catch { return false; } },
+    remove(key) { try { localStorage.removeItem(key); } catch {} },
+  };
+  const state = {
+    server: null,          // { base, busy, queue }
+    files: new Map(),      // 指紋 -> 使用者選的 File，換頁也留著
+    route: 0,              // 換頁時用來停掉舊的輪詢
+  };
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  function clock(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+  function srtTime(sec) {
+    const ms = Math.round(sec * 1000);
+    return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)},${pad(ms % 1000, 3)}`;
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const stemOf = (name) => name.replace(/\.[^.]+$/, '');
+  let toastTimer;
+  function toast(text) {
+    const el = $('toast');
+    el.textContent = text; el.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+  function show(view) {
+    for (const v of ['homeView', 'jobView', 'watchView']) $(v).hidden = v !== view;
+    if (view !== 'watchView') stopPlayback();
+  }
+
+  // ---- 我的字幕（只存在這個瀏覽器）----
+  const items = () => { try { return JSON.parse(store.get('items') || '[]'); } catch { return []; } };
+  const loadCues = (id) => { try { return JSON.parse(store.get('cues:' + id) || 'null'); } catch { return null; } };
+  function saveItem(item, cues) {
+    let list = items().filter((i) => i.id !== item.id);
+    // 瀏覽器空間滿了就先丟掉最舊的
+    while (!store.set('cues:' + item.id, JSON.stringify(cues))) {
+      const oldest = list.shift();
+      if (!oldest) { toast('瀏覽器的儲存空間不夠，這份字幕只能看這一次，記得下載 .srt'); break; }
+      store.remove('cues:' + oldest.id);
+      toast(`空間不夠，已移除最舊的「${oldest.name}」`);
+    }
+    store.set('items', JSON.stringify([...list, item]));
+  }
+  function removeItem(id) {
+    store.remove('cues:' + id);
+    store.set('items', JSON.stringify(items().filter((i) => i.id !== id)));
+  }
+  function downloadSrt(name, cues) {
+    const body = cues.map(([s, e, text], i) => `${i + 1}\n${srtTime(s)} --> ${srtTime(e)}\n${text}\n`).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([body], { type: 'application/x-subrip' }));
+    a.download = `${name}.srt`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function parseSrt(text) {
+    const cues = [];
+    const t = (h, m, s, ms) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
+    for (const block of text.replace(/^﻿/, '').replace(/\r/g, '').split(/\n{2,}/)) {
+      const m = block.match(/(\d+):(\d\d):(\d\d)[,.](\d{3})\s*-->\s*(\d+):(\d\d):(\d\d)[,.](\d{3})[^\n]*\n([\s\S]+)/);
+      if (m) cues.push([t(m[1], m[2], m[3], m[4]), t(m[5], m[6], m[7], m[8]), m[9].trim().replace(/\n/g, ' ')]);
+    }
+    return cues;
+  }
+
+  // ---- 字幕服務 ----
+  async function findServer() {
+    const bases = [];
+    if (location.protocol.startsWith('http')) bases.push(location.origin);   // 直接開 server.py 的網址時
+    try {
+      const r = await fetch('server.json', { cache: 'no-cache' });
+      if (r.ok) { const info = await r.json(); if (info.url) bases.push(info.url); }
+    } catch {}
+    for (const base of [...new Set(bases)]) {
+      try {
+        const r = await fetch(base + '/api/health', { signal: AbortSignal.timeout(6000) });
+        if (r.ok) { const h = await r.json(); if (h.ok) return { base, ...h }; }
+      } catch {}
+    }
+    return null;
+  }
+
+  async function refreshServer() {
+    state.server = await findServer();
+    const chip = $('server');
+    if (state.server) {
+      chip.dataset.state = 'online';
+      const waiting = state.server.queue + (state.server.busy ? 1 : 0);
+      $('serverText').textContent = waiting ? `字幕服務在線 · ${waiting} 部處理中` : '字幕服務在線';
+    } else {
+      chip.dataset.state = 'offline';
+      $('serverText').textContent = '字幕服務離線 · 已做好的字幕仍可觀看';
+    }
+  }
+
+  async function api(path, { method = 'GET', json, body } = {}) {
+    if (!state.server) await refreshServer();
+    if (!state.server) throw new Error('字幕服務目前離線，要等提供服務的同學開啟後才能產生新字幕；已經做好的字幕還是可以看。');
+    const headers = { 'X-Class-Code': $('classCode').value.trim() };
+    if (json) headers['Content-Type'] = 'application/json';
+    let r;
+    try {
+      r = await fetch(state.server.base + path, { method, headers, body: json ? JSON.stringify(json) : body });
+    } catch {
+      state.server = null;
+      throw new Error('連不到字幕服務，可能剛好關掉了，請稍後再試。');
+    }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `字幕服務回應錯誤（${r.status}）`);
+    return data;
+  }
+
+  async function fetchResult(id) {
+    const r = await api(`/api/results/${encodeURIComponent(id)}`);
+    const last = r.cues[r.cues.length - 1];
+    saveItem({ id: r.id, name: r.name, fingerprint: r.fingerprint, drive: r.drive, created: r.created,
+      duration: last ? last[1] : 0 }, r.cues);
+    return r.id;
+  }
+
+  const driveId = (text) => (text.match(/\/d\/([\w-]{20,})|[?&]id=([\w-]{20,})/) || []).slice(1).find(Boolean);
+
+  async function fingerprintFile(file) {
+    // 跟 subtitle.py 的 fingerprint() 一樣：開頭 1 MB + 結尾 1 MB + 檔案大小
+    const MB = 1 << 20;
+    const head = new Uint8Array(await file.slice(0, Math.min(MB, file.size)).arrayBuffer());
+    const tail = new Uint8Array(await file.slice(Math.max(0, file.size - MB)).arrayBuffer());
+    const size = new TextEncoder().encode(String(file.size));
+    const buf = new Uint8Array(head.length + tail.length + size.length);
+    buf.set(head); buf.set(tail, head.length); buf.set(size, head.length + tail.length);
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+    return [...hash].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  }
+
+  // ---- 處理中的工作（記在這個瀏覽器）----
+  const myJobs = () => { try { return JSON.parse(store.get('jobs') || '[]'); } catch { return []; } };
+  const saveJobs = (list) => store.set('jobs', JSON.stringify(list.slice(-10)));
+  const rememberJob = (id, name) => saveJobs([...myJobs().filter((j) => j.id !== id), { id, name }]);
+  const forgetJob = (id) => saveJobs(myJobs().filter((j) => j.id !== id));
+
+  // ---- 首頁 ----
+  function renderHome() {
+    $('crumb').textContent = '';
+    const list = [...items()].reverse();
+    $('noItems').hidden = list.length > 0;
+    $('itemList').hidden = !list.length;
+    $('itemList').replaceChildren(...list.map((item) => {
+      const row = document.createElement('div');
+      row.className = 'item';
+      const name = document.createElement('a');
+      name.className = 'name'; name.href = `#play/${item.id}`; name.textContent = item.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta'; meta.textContent = clock(item.duration);
+      const dl = document.createElement('button');
+      dl.className = 'btn'; dl.type = 'button'; dl.textContent = '下載 .srt';
+      dl.addEventListener('click', () => {
+        const cues = loadCues(item.id);
+        if (cues) downloadSrt(item.name, cues); else toast('這份字幕已經不在這個瀏覽器裡了');
+      });
+      const del = document.createElement('button');
+      del.className = 'btn quiet'; del.type = 'button'; del.textContent = '移除';
+      del.setAttribute('aria-label', `移除「${item.name}」的字幕`);
+      del.addEventListener('click', () => {
+        if (confirm(`從這個瀏覽器移除「${item.name}」的字幕？`)) { removeItem(item.id); renderHome(); }
+      });
+      row.append(name, meta, dl, del);
+      return row;
+    }));
+    const jobs = myJobs();
+    $('jobGroup').hidden = !jobs.length;
+    $('jobList').replaceChildren(...jobs.map((j) => {
+      const row = document.createElement('div');
+      row.className = 'item';
+      const name = document.createElement('a');
+      name.className = 'name'; name.href = `#job/${j.id}`; name.textContent = j.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta'; meta.textContent = '查看進度';
+      row.append(name, meta);
+      return row;
+    }));
+  }
+
+  function setAddStatus(text) { $('addStatus').textContent = text || ''; $('addStatus').hidden = !text; }
+  function setAddError(text) { $('addError').textContent = text || ''; $('addError').hidden = !text; }
+
+  $('classCode').value = store.get('classCode') || '';
+  $('classCode').addEventListener('change', () => store.set('classCode', $('classCode').value.trim()));
+
+  $('driveForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setAddError('');
+    const url = $('driveUrl').value.trim();
+    const id = driveId(url);
+    if (!id) return setAddError('看不懂這個連結。請貼 Google Drive 影片的分享連結，例如 https://drive.google.com/file/d/…/view');
+    const mine = items().find((i) => i.drive === id);
+    if (mine) { location.hash = `#play/${mine.id}`; return; }
+    try {
+      setAddStatus('送出中…');
+      const res = await api('/api/jobs', { method: 'POST', json: { drive: url } });
+      setAddStatus('');
+      if (res.result) { location.hash = `#play/${await fetchResult(res.result)}`; return; }
+      rememberJob(res.job, 'Google Drive 影片');
+      location.hash = `#job/${res.job}`;
+    } catch (err) { setAddStatus(''); setAddError(err.message); }
+  });
+
+  async function handleFile(file) {
+    setAddError('');
+    if (!file) return;
+    setAddStatus('正在辨認這個檔案…');
+    let fp;
+    try { fp = await fingerprintFile(file); }
+    catch { setAddStatus(''); return setAddError('讀不到這個檔案。'); }
+    state.files.set(fp, file);
+    const mine = items().find((i) => i.fingerprint === fp);
+    if (mine) { setAddStatus(''); location.hash = `#play/${mine.id}`; return; }
+    try {
+      const { result } = await api('/api/lookup', { method: 'POST', json: { fingerprint: fp } });
+      setAddStatus('');
+      if (result) { location.hash = `#play/${await fetchResult(result)}`; return; }
+    } catch (err) { setAddStatus(''); return setAddError(err.message); }
+    await submitFile(file, fp);
+  }
+
+  async function submitFile(file, fp) {
+    const route = ++state.route;
+    show('jobView');
+    $('crumb').textContent = file.name;
+    const draw = (job) => { if (route === state.route) renderJob(job); };
+    draw({ state: 'running', stage: '讀取音軌', fraction: 0 });
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    addEventListener('beforeunload', warn);
+    try {
+      // 只傳音軌；取不出來（不是 mp4 / AAC）才傳整個檔案
+      const audio = await extractAudio(file, (f) => draw({ state: 'running', stage: '讀取音軌', fraction: f })).catch(() => null);
+      const kind = audio ? 'audio' : 'video';
+      const upload = audio ? audio.blob : file;
+      const init = await api('/api/uploads', { method: 'POST',
+        json: { name: file.name, size: upload.size, fingerprint: fp, kind, shift: audio ? audio.shift : 0 } });
+      if (init.result) { location.hash = `#play/${await fetchResult(init.result)}`; return; }
+      const label = kind === 'audio' ? '上傳音軌' : '上傳整個影片（這個格式無法只取音軌）';
+      for (let i = 0; i < init.chunks; i++) {
+        const part = upload.slice(i * init.chunk_size, (i + 1) * init.chunk_size);
+        for (let attempt = 1; ; attempt++) {
+          try { await api(`/api/uploads/${init.upload}/${i}`, { method: 'PUT', body: part }); break; }
+          catch (err) { if (attempt >= 3) throw err; await sleep(2000 * attempt); }
+        }
+        const sent = Math.min((i + 1) * init.chunk_size, upload.size);
+        draw({ state: 'running', stage: label, fraction: sent / upload.size,
+          detail: `${(sent / 1e6).toFixed(0)} / ${(upload.size / 1e6).toFixed(0)} MB，上傳完成前請不要關掉這頁` });
+      }
+      const res = await api(`/api/uploads/${init.upload}/done`, { method: 'POST' });
+      rememberJob(res.job, stemOf(file.name));
+      location.hash = `#job/${res.job}`;
+    } catch (err) {
+      draw({ state: 'error', stage: '', error: err.message });
+    } finally {
+      removeEventListener('beforeunload', warn);
+    }
+  }
+
+  $('fileInput').addEventListener('change', (e) => { handleFile(e.target.files[0]); e.target.value = ''; });
+  const drop = $('drop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
+
+  $('srtForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setAddError('');
+    const video = $('srtVideo').files[0], srt = $('srtFile').files[0];
+    if (!video || !srt) return setAddError('影片檔和字幕檔都要選。');
+    const cues = parseSrt(await srt.text());
+    if (!cues.length) return setAddError('這個字幕檔讀不出內容，請確認是 .srt 格式。');
+    const fp = await fingerprintFile(video);
+    state.files.set(fp, video);
+    const id = 'local-' + fp;
+    saveItem({ id, name: stemOf(video.name), fingerprint: fp, drive: null, created: Math.floor(Date.now() / 1000),
+      duration: cues[cues.length - 1][1] }, cues);
+    location.hash = `#play/${id}`;
+  });
+
+  // ---- 進度頁 ----
+  function renderJob(job) {
+    const running = job.state === 'running' || job.state === 'queued';
+    $('jobTitle').textContent = job.state === 'error' ? '沒辦法產生字幕' : job.state === 'done' ? '字幕做好了' : '正在產生字幕';
+    let stage = job.stage || '';
+    if (job.state === 'queued') stage = job.position ? `排隊中，前面還有 ${job.position} 部` : '排隊中，下一部就是你的';
+    $('jobStage').textContent = stage;
+    const known = typeof job.fraction === 'number';
+    $('jobPercent').textContent = known ? `${Math.floor(job.fraction * 100)}%` : '';
+    $('jobBar').classList.toggle('busy', running && !known);
+    $('jobBar').firstElementChild.style.width = known ? `${job.fraction * 100}%` : (job.state === 'done' ? '100%' : '');
+    $('jobDetail').textContent = job.detail || '';
+    $('jobError').textContent = job.error || '';
+    $('jobError').hidden = !job.error;
+  }
+
+  async function showJob(jobId) {
+    const route = ++state.route;
+    show('jobView');
+    renderJob({ state: 'queued', stage: '讀取進度…' });
+    while (route === state.route) {
+      try {
+        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+        if (route !== state.route) return;
+        $('crumb').textContent = job.name || '';
+        renderJob(job);
+        if (job.state === 'done') {
+          const id = await fetchResult(job.result);
+          forgetJob(jobId);
+          refreshServer();
+          if (route === state.route) location.hash = `#play/${id}`;
+          return;
+        }
+        if (job.state === 'error') { forgetJob(jobId); refreshServer(); return; }
+      } catch (err) {
+        if (route !== state.route) return;
+        if (/找不到這個工作/.test(err.message)) { forgetJob(jobId); renderJob({ state: 'error', error: err.message }); return; }
+        renderJob({ state: 'queued', stage: '等待字幕服務', detail: err.message });
+      }
+      await sleep(2500);
+    }
+  }
+
+  // ---- 播放頁 ----
+  const video = $('video'), list = $('lines'), search = $('q');
+  // 用程式加的字幕軌不需要額外檔案，iPhone 全螢幕也看得到；換影片時清空重填
+  const track = video.addTextTrack('subtitles', '中文（自動產生）', 'zh-Hant');
+  let item = null, cues = [], rows = [], active = -1, follow = true, query = '', lastSave = 0, blobUrl = null, mode = null;
+
+  function stopPlayback() {
+    video.pause();
+    $('drivePlayer').src = 'about:blank';
+  }
+
+  async function showPlay(id) {
+    const route = ++state.route;
+    show('watchView');
+    item = items().find((i) => i.id === id) || null;
+    cues = item && loadCues(id);
+    if (!cues && /^[0-9a-f]{32}$/.test(id)) {
+      // 這個瀏覽器裡沒有（例如空間不夠被清掉了），再跟字幕服務拿一次
+      try { await fetchResult(id); item = items().find((i) => i.id === id); cues = loadCues(id); } catch {}
+    }
+    if (route !== state.route) return;
+    if (!item || !cues) { toast('這個瀏覽器裡找不到這份字幕'); location.hash = ''; return; }
+    $('crumb').textContent = item.name;
+    document.title = `${item.name} · 影片自動字幕`;
+
+    for (const cue of Array.from(track.cues || [])) track.removeCue(cue);
+    for (const [s, e, text] of cues) track.addCue(new VTTCue(s, e, text));
+    active = -1; follow = true; query = ''; search.value = '';
+    buildRows(); applySearch();
+
+    $('driveHint').hidden = $('useDrive').hidden = !item.drive;
+    if (item.drive) $('driveDownload').href = `https://drive.google.com/file/d/${item.drive}/view`;
+    const file = state.files.get(item.fingerprint);
+    if (file) playFile(file); else showChooser();
+  }
+
+  function setMode(next) {
+    mode = next;
+    $('video').hidden = next !== 'local';
+    $('drivePlayer').hidden = next !== 'drive';
+    $('chooser').hidden = next !== null;
+    $('videoError').hidden = true;
+    for (const id of ['cc', 'smaller', 'bigger']) $(id).disabled = next !== 'local';
+    $('sourceNote').textContent = next === 'drive'
+      ? 'Google Drive 播放器不會顯示字幕，也不能從逐字稿跳轉；請對照右邊的逐字稿，或改用電腦裡的影片檔。'
+      : '字幕是語音辨識自動產生的，專有名詞可能聽錯。';
+  }
+
+  function showChooser() { stopPlayback(); setMode(null); }
+
+  function playFile(file) {
+    setMode('local');
+    $('drivePlayer').src = 'about:blank';
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    blobUrl = URL.createObjectURL(file);
+    video.src = blobUrl;
+    const resume = Number(store.get('pos:' + item.id) || 0);
+    if (resume > 5) {
+      video.addEventListener('loadedmetadata', () => { video.currentTime = resume; }, { once: true });
+      toast(`從上次看到的 ${clock(resume)} 繼續`);
+    }
+  }
+
+  function useDrive() {
+    video.pause();
+    setMode('drive');
+    $('drivePlayer').src = `https://drive.google.com/file/d/${item.drive}/preview`;
+  }
+
+  async function pickForItem(file) {
+    if (!file) return;
+    const fp = await fingerprintFile(file);
+    state.files.set(fp, file);
+    if (fp === item.fingerprint) return playFile(file);
+    const other = items().find((i) => i.fingerprint === fp);
+    if (other) { toast(`這是「${other.name}」，已切換過去`); location.hash = `#play/${other.id}`; return; }
+    if (confirm('這個檔案跟產生字幕時用的影片不一樣（可能轉檔或剪輯過），字幕時間可能對不上。仍要播放嗎？')) playFile(file);
+  }
+
+  $('pickLocal').addEventListener('click', () => $('watchFile').click());
+  $('retryPick').addEventListener('click', () => $('watchFile').click());
+  $('changeSource').addEventListener('click', () => $('watchFile').click());
+  $('watchFile').addEventListener('change', (e) => { pickForItem(e.target.files[0]); e.target.value = ''; });
+  $('useDrive').addEventListener('click', useDrive);
+  video.addEventListener('error', () => { if (mode === 'local' && video.error) $('videoError').hidden = false; });
+  $('srt').addEventListener('click', () => downloadSrt(item.name, cues));
+
+  // 逐字稿
+  function buildRows() {
+    const frag = document.createDocumentFragment();
+    rows = cues.map(([s, , text], i) => {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.dataset.i = i;
+      const time = document.createElement('time');
+      time.textContent = clock(s);
+      const span = document.createElement('span');
+      span.textContent = text;
+      btn.append(time, span); li.append(btn); frag.append(li);
+      return { li, span, text, lower: text.toLowerCase() };
+    });
+    list.replaceChildren(frag);
+    list.scrollTop = 0;
+  }
+
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-i]');
+    if (!btn) return;
+    const t = cues[Number(btn.dataset.i)][0];
+    if (mode === 'local') { video.currentTime = t; video.play().catch(() => {}); }
+    else if (mode === 'drive') toast(`Drive 播放器無法從這裡跳轉，請手動拖到 ${clock(t)}`);
+    else toast('先選擇影片檔');
+  });
+
+  function scrollToRow(i) {
+    const row = rows[i]; if (!row) return;
+    const top = row.li.offsetTop - list.clientHeight / 2 + row.li.offsetHeight / 2;
+    list.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+  // 自己捲動逐字稿時先別自動跟著跑，免得正在看的地方被拉走
+  for (const type of ['wheel', 'touchmove', 'keydown']) {
+    list.addEventListener(type, () => { if (!query && mode === 'local') { follow = false; $('follow').hidden = false; } }, { passive: true });
+  }
+  $('follow').addEventListener('click', () => { follow = true; $('follow').hidden = true; scrollToRow(active); });
+
+  function findCue(t) {
+    let lo = 0, hi = cues.length - 1, found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (cues[mid][0] <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return found;
+  }
+
+  video.addEventListener('timeupdate', () => {
+    const i = findCue(video.currentTime);
+    if (i !== active) {
+      rows[active]?.li.classList.remove('now');
+      rows[i]?.li.classList.add('now');
+      active = i;
+      if (follow && !query) scrollToRow(i);
+    }
+    const now = Date.now();
+    if (now - lastSave > 5000) { lastSave = now; store.set('pos:' + item.id, String(Math.floor(video.currentTime))); }
+  });
+
+  function applySearch() {
+    const q = query.trim().toLowerCase();
+    let found = 0;
+    for (const row of rows) {
+      const at = q ? row.lower.indexOf(q) : -1;
+      row.li.hidden = Boolean(q) && at < 0;
+      if (at >= 0) {
+        found++;
+        const mark = document.createElement('mark');
+        mark.textContent = row.text.slice(at, at + q.length);
+        row.span.replaceChildren(row.text.slice(0, at), mark, row.text.slice(at + q.length));
+      } else if (row.span.firstElementChild) {
+        row.span.textContent = row.text;
+      }
+    }
+    $('count').textContent = q ? (found ? `${found} 句` : '找不到') : '';
+    if (!q) { $('follow').hidden = follow; if (follow) scrollToRow(active); }
+    else { $('follow').hidden = true; list.scrollTop = 0; }
+  }
+  let searchTimer;
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { query = search.value; if (!query) follow = true; applySearch(); }, 150);
+  });
+
+  // 字幕顯示
+  let ccOn = store.get('cc') !== 'off';
+  let size = Number(store.get('cueSize')) || 100;
+  function setCC(on) {
+    ccOn = on; track.mode = on ? 'showing' : 'hidden';
+    $('cc').setAttribute('aria-pressed', String(on));
+    $('cc').textContent = on ? '字幕：開' : '字幕：關';
+    store.set('cc', on ? 'on' : 'off');
+  }
+  function setSize(value) {
+    size = Math.min(180, Math.max(70, value));
+    // ::cue 不一定吃 CSS 變數，直接改寫這段樣式
+    $('cueSize').textContent = `video::cue { font-size: ${size}%; }`;
+    $('sizeLabel').textContent = size + '%';
+    store.set('cueSize', String(size));
+  }
+  $('cc').addEventListener('click', () => setCC(!ccOn));
+  video.textTracks.addEventListener('change', () => {
+    const on = track.mode === 'showing';
+    if (on !== ccOn) setCC(on);
+  });
+  $('smaller').addEventListener('click', () => setSize(size - 10));
+  $('bigger').addEventListener('click', () => setSize(size + 10));
+
+  // ---- 路由 ----
+  function route() {
+    const path = location.hash.slice(1);
+    if (path.startsWith('play/')) return showPlay(decodeURIComponent(path.slice(5)));
+    if (path.startsWith('job/')) return showJob(decodeURIComponent(path.slice(4)));
+    state.route++;
+    document.title = '影片自動字幕';
+    show('homeView');
+    renderHome();
+  }
+  addEventListener('hashchange', route);
+
+  setCC(ccOn);
+  setSize(size);
+  route();
+  refreshServer();
+  setInterval(refreshServer, 60000);
+})();
+</script>
+</body>
+</html>
